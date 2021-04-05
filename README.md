@@ -4,7 +4,7 @@ Cursed docker wrapper to provide instantaneous VMs
 
 ## Usage
 
-Create your first VM with `vm install [name]`, then give it a docker image address, such as `debian` to install a Debian VM.
+Create your first VM with `vm install [name] [address]`, giving it a name as well as a docker image address, such as `debian` to install a Debian VM.
 
 Start with `vm start [name]`, and enjoy the near-instant boot times of this cursed setup.
 
