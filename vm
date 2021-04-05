@@ -1,0 +1,138 @@
+#!/bin/bash
+
+# Colours
+C=$(printf '\033')
+RED="${C}[1;31m"
+GREEN="${C}[1;32m"
+BLUE="${C}[1;34m"
+NC="${C}[0m"
+
+IMAGE_NAME="parrot"
+
+if [ $2 ]
+then
+	IMAGE_NAME=$2
+fi
+
+case $1 in
+	revert)
+		if [ $(docker ps | grep -c $IMAGE_NAME) -gt 0 ]
+		then
+			echo "$RED[*]$NC Please stop the running image first."
+			exit 1
+		fi
+		mapfile -t images < <(docker images | grep "$IMAGE_NAME-")
+		echo "$RED[*]$NC Please select a snapshot to revert to"
+		for i in $(seq 0 $((${#images[@]}-1)))
+		do
+			ar=(${images[i]})
+			printf "$GREEN$i$NC\t${ar[0]}\n"
+		done
+		read index
+		if [ $(($index)) != $index ]
+		then
+			echo "$RED[*]$NC Invalid choice."
+			exit 1
+		fi
+		if [ $index -ge 0 -a $index -lt ${#images[@]} ]
+		then
+			ar=(${images[index]})
+			echo "$RED[*]$NC Reverting to" ${ar[0]}
+			docker tag ${ar[0]} $IMAGE_NAME
+			echo "$BLUE[*]$NC Reverted to ${ar[0]} successfully!"
+		fi
+		;;
+
+	status)
+		mapfile -t images < <(docker images)
+		mapfile -t running < <(docker ps)
+		echo "$BLUE[*]$NC Installed images:"
+		for i in $(seq 1 $((${#images[@]}-1)));
+		do
+			ar=(${images[$i]})
+			echo ${ar[0]} \(${ar[-1]}\)
+		done
+		printf "\n$RED[*]$NC Running images:\n"
+		for i in $(seq 1 $((${#running[@]}-1)));
+		do
+			ar=(${running[$i]})
+			echo ${ar[1]}
+		done
+		;;
+	delete)
+		echo "$RED[*]$NC Are you sure you want to delete $IMAGE_NAME? [y/N]"
+		read confirm
+		if [ $confirm == "yes" -o $confirm == "y" ]
+		then
+			docker rmi $IMAGE_NAME >> /tmp/$IMAGE_NAME.log
+			echo "$BLUE[*]$NC Deleted $IMAGE_NAME"
+		fi
+		;;
+	install)
+		echo "Please enter the docker image name (eg. parrotsec/security)"
+		read SRC_IMAGE
+		echo "$RED[*]$NC Installing $IMAGE_NAME" | tee -a /tmp/$IMAGE_NAME.log
+		docker pull $SRC_IMAGE >> /tmp/$IMAGE_NAME.log
+		docker tag $SRC_IMAGE $IMAGE_NAME >> /tmp/$IMAGE_NAME.log
+		if [ $SRC_IMAGE != $IMAGE_NAME ]
+		then
+			docker rmi $SRC_IMAGE >> /tmp/$IMAGE_NAME.log
+		fi
+		echo "$BLUE[*]$NC Installed $IMAGE_NAME!" | tee -a /tmp/$IMAGE_NAME.log
+		echo "$BLUE[*]$NC Written logfile to /tmp/$IMAGE_NAME.log"
+		;;
+	attach)
+		docker exec -i -t $IMAGE_NAME bash
+		;;
+	start)
+		echo "$RED[*]$NC Starting $IMAGE_NAME" | tee -a /tmp/$IMAGE_NAME.log
+		docker run \
+			--name="$IMAGE_NAME" \
+			-d \
+			--rm \
+			-ti \
+			--volume="$HOME/.Xauthority:/root/.Xauthority:rw" \
+			--env="DISPLAY" \
+			--net=host \
+			-v $PWD/work:/work \
+			$IMAGE_NAME >> /tmp/$IMAGE_NAME.log
+		echo "$BLUE[*]$NC Started $IMAGE_NAME!" | tee -a /tmp/$IMAGE_NAME.log
+		echo "$BLUE[*]$NC Written logfile to /tmp/$IMAGE_NAME.log"
+		$0 attach $2
+		;;
+	save)
+		echo "$RED[*]$NC Saving $IMAGE_NAME" | tee -a /tmp/$IMAGE_NAME.log
+		docker commit $IMAGE_NAME $IMAGE_NAME >> /tmp/$IMAGE_NAME.log
+		;;
+	kill)
+		echo "$RED[*]$NC Killing $IMAGE_NAME" | tee -a /tmp/$IMAGE_NAME.log
+		docker kill $IMAGE_NAME >> /tmp/$IMAGE_NAME.log
+		;;
+	stop)
+		$0 save $2
+		$0 kill $2
+		echo "$BLUE[*]$NC Written logfile to /tmp/$IMAGE_NAME.log"
+		;;
+	snap)
+		echo "$RED[*]$NC Snapshotting $IMAGE_NAME" | tee -a /tmp/$IMAGE_NAME.log
+		if [ $(docker ps | grep -c $IMAGE_NAME) -gt 0 ]
+		then
+			$0 save $2
+		fi
+		docker tag $IMAGE_NAME $IMAGE_NAME-$(date +%Y-%m-%d_%H.%M.%S)
+		echo "$BLUE[*]$NC Written logfile to /tmp/$IMAGE_NAME.log"
+		;;
+	*)
+		echo "Usage: $0 [command] [image]"
+		echo "Commands:"
+		printf "\tattach \tAttach to a running container\n"
+		printf "\tdelete \tDelete an installed image\n"
+		printf "\tinstall\tInstall a new image\n"
+		printf "\tkill   \tKill a currently running container\n"
+		printf "\tsave   \tSave a currently running container\n"
+		printf "\tsnap   \tSnapshot a container. If container is running, this will save first\n"
+		printf "\tstart  \tStart a container\n"
+		printf "\tstatus \tList all installed images and currently running containers\n"
+		printf "\tstop   \tSave and stop a running container\n"
+		;;
+esac
